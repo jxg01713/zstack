@@ -3,6 +3,7 @@ package org.zstack.storage.snapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.zstack.core.cloudbus.CloudBus;
 import org.zstack.core.db.DatabaseFacade;
+import org.zstack.core.db.Q;
 import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
@@ -16,6 +17,8 @@ import org.zstack.header.storage.primary.PrimaryStorageVO;
 import org.zstack.header.storage.primary.PrimaryStorageVO_;
 import org.zstack.header.storage.snapshot.*;
 import org.zstack.header.volume.*;
+import org.zstack.utils.Utils;
+import org.zstack.utils.logging.CLogger;
 
 import static org.zstack.core.Platform.argerr;
 import static org.zstack.core.Platform.operr;
@@ -26,6 +29,7 @@ import java.util.List;
 /**
  */
 public class VolumeSnapshotApiInterceptor implements ApiMessageInterceptor {
+    private final static CLogger logger = Utils.getLogger(VolumeSnapshotApiInterceptor.class);
     @Autowired
     private CloudBus bus;
     @Autowired
@@ -63,6 +67,8 @@ public class VolumeSnapshotApiInterceptor implements ApiMessageInterceptor {
             validate((APIGetVolumeSnapshotTreeMsg) msg);
         } else if (msg instanceof APIBackupVolumeSnapshotMsg) {
             validate((APIBackupVolumeSnapshotMsg) msg);
+        } else if (msg instanceof APIBatchDeleteVolumeSnapshotMsg) {
+            validate((APIBatchDeleteVolumeSnapshotMsg) msg);
         }
 
         setServiceId(msg);
@@ -155,6 +161,20 @@ public class VolumeSnapshotApiInterceptor implements ApiMessageInterceptor {
             APIDeleteVolumeSnapshotEvent evt = new APIDeleteVolumeSnapshotEvent(msg.getId());
             bus.publish(evt);
             throw new StopRoutingException();
+        }
+    }
+
+    private void validate(APIBatchDeleteVolumeSnapshotMsg msg) {
+        List<VolumeSnapshotVO> snapshotVOS = Q.New(VolumeSnapshotVO.class).in(VolumeSnapshotVO_.uuid, msg.getUuids()).list();
+        for (VolumeSnapshotVO snapshotVO : snapshotVOS) {
+            if (msg.getVolumeUuid() == null) {
+                msg.setVolumeUuid(snapshotVO.getVolumeUuid());
+            } else if (!msg.getVolumeUuid().equals(msg.getVolumeUuid())) {
+                throw new ApiMessageInterceptionException(operr("not support delete snapshots on different volumes[uuid: %s, %s]", msg.getVolumeUuid(), snapshotVO.getVolumeUuid()));
+            }
+        }
+        if (msg.getVolumeUuid() == null) {
+            throw new ApiMessageInterceptionException(operr("can not find volume uuid for snapshosts[uuid: %s]", msg.getUuids()));
         }
     }
 }
