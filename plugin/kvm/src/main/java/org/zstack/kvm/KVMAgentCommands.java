@@ -1,12 +1,18 @@
 package org.zstack.kvm;
 
+import org.zstack.core.db.Q;
 import org.zstack.core.validation.ConditionalValidation;
 import org.zstack.header.core.validation.Validation;
+import org.zstack.header.image.ImagePlatform;
 import org.zstack.header.vm.VmBootDevice;
+import org.zstack.header.vm.VmInstanceVO;
+import org.zstack.header.vm.VmInstanceVO_;
+import org.zstack.header.volume.VolumeInventory;
 import org.zstack.network.securitygroup.SecurityGroupMembersTO;
 import org.zstack.network.securitygroup.SecurityGroupRuleTO;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class KVMAgentCommands {
     public enum BootDev {
@@ -696,6 +702,38 @@ public class KVMAgentCommands {
             this.cacheMode = other.cacheMode;
             this.wwn = other.wwn;
             this.shareable = other.shareable;
+        }
+
+        public static List<VolumeTO> valueOf(List<VolumeInventory> vols) {
+            return vols.stream().map(VolumeTO::valueOf).collect(Collectors.toList());
+        }
+
+        public static VolumeTO valueOf(VolumeInventory vol) {
+            return valueOf(vol, null);
+        }
+
+        public static VolumeTO valueOf(VolumeInventory vol, String platform) {
+            VolumeTO to = new VolumeTO();
+            to.setInstallPath(vol.getInstallPath());
+            if (vol.getDeviceId() != null) {
+                to.setDeviceId(vol.getDeviceId());
+            }
+            to.setDeviceType(KVMHost.getVolumeTOType(vol));
+            to.setVolumeUuid(vol.getUuid());
+            // volumes can only be attached on Windows if the virtio is enabled
+            // so for Windows, use virtio as well
+
+            if (platform == null && vol.getVmInstanceUuid() != null) {
+                platform = Q.New(VmInstanceVO.class).eq(VmInstanceVO_.uuid, vol.getUuid()).select(VmInstanceVO_.platform).findValue();
+            }
+
+            to.setUseVirtio(platform == null || (ImagePlatform.Windows.toString().equals(platform) ||
+                    ImagePlatform.valueOf(platform).isParaVirtualization()));
+            to.setUseVirtioSCSI(KVMSystemTags.VOLUME_VIRTIO_SCSI.hasTag(vol.getUuid()));
+            to.setWwn(KVMHost.computeWwnIfAbsent(vol.getUuid()));
+            to.setShareable(vol.isShareable());
+            to.setCacheMode(KVMGlobalConfig.LIBVIRT_CACHE_MODE.value());
+            return to;
         }
 
         public boolean isShareable() {
@@ -1692,7 +1730,7 @@ public class KVMAgentCommands {
 
     public static class MergeSnapshotCmd extends AgentCommand {
         private String vmUuid;
-        private int deviceId;
+        private VolumeTO volume;
         private String srcPath;
         private String destPath;
         private boolean fullRebase;
@@ -1713,14 +1751,6 @@ public class KVMAgentCommands {
             this.vmUuid = vmUuid;
         }
 
-        public int getDeviceId() {
-            return deviceId;
-        }
-
-        public void setDeviceId(int deviceId) {
-            this.deviceId = deviceId;
-        }
-
         public String getSrcPath() {
             return srcPath;
         }
@@ -1736,12 +1766,20 @@ public class KVMAgentCommands {
         public void setDestPath(String destPath) {
             this.destPath = destPath;
         }
+
+        public VolumeTO getVolume() {
+            return volume;
+        }
+
+        public void setVolume(VolumeTO volume) {
+            this.volume = volume;
+        }
     }
 
     public static class TakeSnapshotCmd extends AgentCommand {
         private String vmUuid;
         private String volumeUuid;
-        private int deviceId;
+        private VolumeTO volume;
         private String installPath;
         private boolean fullSnapshot;
         private String volumeInstallPath;
@@ -1780,14 +1818,6 @@ public class KVMAgentCommands {
             this.vmUuid = vmUuid;
         }
 
-        public int getDeviceId() {
-            return deviceId;
-        }
-
-        public void setDeviceId(int deviceId) {
-            this.deviceId = deviceId;
-        }
-
         public String getInstallPath() {
             return installPath;
         }
@@ -1810,6 +1840,14 @@ public class KVMAgentCommands {
 
         public void setNewVolumeUuid(String newVolumeUuid) {
             this.newVolumeUuid = newVolumeUuid;
+        }
+
+        public VolumeTO getVolume() {
+            return volume;
+        }
+
+        public void setVolume(VolumeTO volume) {
+            this.volume = volume;
         }
     }
 
