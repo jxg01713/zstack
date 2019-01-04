@@ -4619,9 +4619,13 @@ public class VmInstanceBase extends AbstractVmInstance {
 
         setFlowMarshaller(chain);
 
+        List<VolumeInventory> attachedVolumes = getAllDataVolumes(getSelfInventory());
+        attachedVolumes.removeIf(it -> it.getDeviceId() == null || it.getUuid().equals(volume.getUuid()));
+
         chain.setName(String.format("vm-%s-attach-volume-%s", self.getUuid(), volume.getUuid()));
         chain.getData().put(VmInstanceConstant.Params.VmInstanceSpec.toString(), spec);
         chain.getData().put(VmInstanceConstant.Params.AttachingVolumeInventory.toString(), volume);
+        chain.getData().put(Params.AttachedDataVolumeInventories.toString(), attachedVolumes);
         chain.done(new FlowDoneHandler(msg, completion) {
             @Override
             public void handle(Map data) {
@@ -5267,22 +5271,12 @@ public class VmInstanceBase extends AbstractVmInstance {
             }
         }
 
-        List<VolumeInventory> dataVols = new ArrayList<VolumeInventory>();
-        for (VolumeInventory vol : inv.getAllVolumes()) {
-            if (vol.getUuid().equals(inv.getRootVolumeUuid())) {
-                spec.setDestRootVolume(vol);
-                spec.setRequiredPrimaryStorageUuidForRootVolume(vol.getPrimaryStorageUuid());
-            } else {
-                dataVols.add(vol);
-            }
-        }
-
-        List<BuildVolumeSpecExtensionPoint> exts = pluginRgty.getExtensionList(
-                BuildVolumeSpecExtensionPoint.class);
-        String vmUuid = inv.getUuid();
-        exts.forEach(e -> dataVols.addAll(e.supplyAdditionalVolumesForVmInstance(vmUuid)));
-
-        spec.setDestDataVolumes(dataVols);
+        VolumeInventory rootVol = inv.getRootVolume();
+        Optional.ofNullable(rootVol).ifPresent(it -> {
+            spec.setDestRootVolume(it);
+            spec.setRequiredPrimaryStorageUuidForRootVolume(it.getPrimaryStorageUuid());
+        });
+        spec.setDestDataVolumes(getAllDataVolumes(inv));
 
         // When starting an imported VM, we might not have an image UUID.
         if (inv.getImageUuid() != null) {
@@ -5319,6 +5313,16 @@ public class VmInstanceBase extends AbstractVmInstance {
         spec.setConsolePassword(VmSystemTags.CONSOLE_PASSWORD.
                 getTokenByResourceUuid(self.getUuid(), VmSystemTags.CONSOLE_PASSWORD_TOKEN));
         return spec;
+    }
+
+    private List<VolumeInventory> getAllDataVolumes(VmInstanceInventory inv) {
+        List<VolumeInventory> dataVols = inv.getAllVolumes().stream()
+                .filter(it -> !it.getUuid().equals(inv.getRootVolumeUuid()))
+                .collect(Collectors.toList());
+
+        List<BuildVolumeSpecExtensionPoint> exts = pluginRgty.getExtensionList(BuildVolumeSpecExtensionPoint.class);
+        exts.forEach(e -> dataVols.addAll(e.supplyAdditionalVolumesForVmInstance(inv.getUuid())));
+        return dataVols;
     }
 
     protected void rebootVm(final Message msg, final Completion completion) {
