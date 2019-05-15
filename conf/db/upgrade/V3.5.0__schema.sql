@@ -66,3 +66,171 @@ call upgradeOrganization();
 SET max_sp_recursion_depth=0;
 DROP PROCEDURE IF EXISTS upgradeChild;
 DROP PROCEDURE IF EXISTS upgradeOrganization;
+
+DROP PROCEDURE IF EXISTS upgradeProjectAdmin;
+DROP PROCEDURE IF EXISTS upgradeProjectOperator;
+DROP PROCEDURE IF EXISTS upgradePlatformAdmin;
+DROP PROCEDURE IF EXISTS getMaxAccountResourceRefVO;
+DROP PROCEDURE IF EXISTS upgradePrivilegeAdmin;
+
+-- upgrade project admin
+DELIMITER $$
+CREATE PROCEDURE upgradeProjectAdmin()
+    BEGIN
+        DECLARE done INT DEFAULT FALSE;
+        DECLARE vid varchar(32);
+        DECLARE projectUuid varchar(32);
+        DECLARE attributeUuid VARCHAR(32);
+        DECLARE cur CURSOR FOR SELECT virtualIDUuid,value FROM zstack.IAM2VirtualIDAttributeVO where name = '__ProjectAdmin__';
+        DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+        OPEN cur;
+        read_loop: LOOP
+            FETCH cur INTO vid, projectUuid;
+            IF done THEN
+                LEAVE read_loop;
+            END IF;
+
+            SET attributeUuid = REPLACE(UUID(), '-', '');
+
+            INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
+            values (attributeUuid, '__IAM2ProjectAdmin__', projectUuid, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+        END LOOP;
+        CLOSE cur;
+        SELECT CURTIME();
+    END $$
+DELIMITER ;
+
+-- upgrade project operator
+DELIMITER $$
+CREATE PROCEDURE upgradeProjectOperator()
+    BEGIN
+        DECLARE done INT DEFAULT FALSE;
+        DECLARE vid varchar(32);
+        DECLARE projectUuid varchar(32);
+        DECLARE attributeUuid VARCHAR(32);
+        DECLARE cur CURSOR FOR SELECT virtualIDUuid,value FROM zstack.IAM2VirtualIDAttributeVO where name = '__ProjectOperator__';
+        DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+        OPEN cur;
+        read_loop: LOOP
+            FETCH cur INTO vid, projectUuid;
+            IF done THEN
+                LEAVE read_loop;
+            END IF;
+
+            SET attributeUuid = REPLACE(UUID(), '-', '');
+
+            INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
+            values (attributeUuid, '__IAM2ProjectOperator__', projectUuid, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+        END LOOP;
+        CLOSE cur;
+        SELECT CURTIME();
+    END $$
+DELIMITER ;
+
+-- upgrade platform admin
+DELIMITER $$
+CREATE PROCEDURE upgradePlatformAdmin()
+    BEGIN
+        DECLARE done INT DEFAULT FALSE;
+        DECLARE vid varchar(32);
+        DECLARE attributeUuid VARCHAR(32);
+        DECLARE cur CURSOR FOR SELECT virtualIDUuid FROM zstack.IAM2VirtualIDAttributeVO where name = '__PlatformAdmin__';
+        DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+        OPEN cur;
+        read_loop: LOOP
+            FETCH cur INTO vid;
+            IF done THEN
+                LEAVE read_loop;
+            END IF;
+
+            SET attributeUuid = REPLACE(UUID(), '-', '');
+
+            INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
+            VALUES (attributeUuid, '__IAM2PlatformAdmin__', NULL, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+        END LOOP;
+        CLOSE cur;
+        SELECT CURTIME();
+    END $$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE getMaxAccountResourceRefVO(OUT refId bigint(20) unsigned)
+    BEGIN
+        SELECT max(id) INTO refId from zstack.AccountResourceRefVO;
+    END $$
+DELIMITER ;
+
+-- upgrade privilege admin
+DELIMITER $$
+CREATE PROCEDURE upgradePrivilegeAdmin(IN privilege_role_uuid VARCHAR(32), IN role_name VARCHAR(255))
+    procedure_label: BEGIN
+        DECLARE role_count INT DEFAULT 0;
+        DECLARE done INT DEFAULT FALSE;
+        DECLARE vid varchar(32);
+        DECLARE role_statement_uuid varchar(32);
+        DECLARE new_statement_uuid varchar(32);
+        DECLARE refId bigint(20) unsigned;
+        DECLARE generated_role_uuid VARCHAR(32);
+        DECLARE cur CURSOR FOR SELECT virtualIDUuid FROM zstack.IAM2VirtualIDRoleRefVO WHERE roleUuid=privilege_role_uuid;
+        DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+        SELECT count(*) INTO role_count FROM zstack.RoleVO WHERE uuid = privilege_role_uuid;
+
+        IF (role_count = 0) THEN
+            LEAVE procedure_label;
+        END IF;
+
+        SELECT uuid INTO role_statement_uuid FROM RolePolicyStatementVO WHERE roleUuid = privilege_role_uuid LIMIT 1;
+
+        OPEN cur;
+        read_loop: LOOP
+            FETCH cur INTO vid;
+            IF done THEN
+                LEAVE read_loop;
+            END IF;
+
+            SET generated_role_uuid = REPLACE(UUID(), '-', '');
+
+            INSERT INTO ResourceVO (`uuid`, `resourceName`, `resourceType`, `concreteResourceType`)
+            VALUES (generated_role_uuid, role_name, 'RoleVO', 'org.zstack.header.identity.role.RoleVO');
+
+            INSERT INTO zstack.RoleVO (`uuid`, `name`, `createDate`, `lastOpDate`, `state`, `type`)
+            SELECT generated_role_uuid, role_name, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), `state`, 'Customized' FROM
+            RoleVO WHERE uuid = privilege_role_uuid;
+
+            CALL getMaxAccountResourceRefVO(refId);
+            INSERT INTO AccountResourceRefVO (`id`, `accountUuid`, `ownerAccountUuid`, `resourceUuid`, `resourceType`, `permission`, `isShared`, `lastOpDate`, `createDate`)
+            VALUES (refId + 1, targetAccountUuid, targetAccountUuid, new_role_uuid, 'RoleVO', 2, 0, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+
+            SET new_statement_uuid = REPLACE(UUID(), '-', '');
+            INSERT INTO zstack.RolePolicyStatementVO (`uuid`, `statement`, `roleUuid`, `lastOpDate`, `createDate`)
+            SELECT new_statement_uuid, `statement`, generated_role_uuid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP() FROM
+            RolePolicyStatementVO WHERE uuid = role_statement_uuid;
+
+            INSERT INTO IAM2VirtualIDRoleRefVO (`virtualIDUuid`, `roleUuid`, `lastOpDate`, `createDate`)
+            VALUES (vid, generated_role_uuid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+        END LOOP;
+        CLOSE cur;
+
+        DELETE FROM zstack.IAM2VirtualIDRoleRefVO WHERE roleUuid = privilege_role_uuid;
+        DELETE FROM zstack.RolePolicyStatementVO WHERE roleUuid = privilege_role_uuid;
+        DELETE FROM zstack.RoleVO WHERE uuid = privilege_role_uuid;
+        DELETE FROM zstack.ResourceVO WHERE uuid = privilege_role_uuid;
+        DELETE FROM zstack.AccountResourceRefVO WHERE resourceUuid = privilege_role_uuid;
+        SELECT CURTIME();
+    END $$
+DELIMITER ;
+
+CALL upgradeProjectAdmin();
+CALL upgradeProjectOperator();
+CALL upgradePlatformAdmin();
+CALL upgradePrivilegeAdmin('434a5e418a114714848bb0923acfbb9c', 'audit-admin-role');
+CALL upgradePrivilegeAdmin('58db081b0bbf4e93b63dc4ac90a423ad', 'security-admin-role');
+
+DROP PROCEDURE IF EXISTS upgradeProjectAdmin;
+DROP PROCEDURE IF EXISTS upgradeProjectOperator;
+DROP PROCEDURE IF EXISTS upgradePlatformAdmin;
+DROP PROCEDURE IF EXISTS getMaxAccountResourceRefVO;
+DROP PROCEDURE IF EXISTS upgradePrivilegeAdmin;
