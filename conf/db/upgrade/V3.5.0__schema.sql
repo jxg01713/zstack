@@ -43,6 +43,7 @@ CREATE PROCEDURE upgradeOrganization()
         SELECT COUNT(uuid) INTO null_root_organization_uuid_exists FROM IAM2OrganizationVO where rootOrganizationUuid is NULL or rootOrganizationUuid = '';
 
         IF (null_root_organization_uuid_exists = 0) THEN
+            SELECT CURTIME();
             LEAVE upgrade_procedure;
         END IF;
 
@@ -179,6 +180,7 @@ CREATE PROCEDURE upgradePrivilegeAdmin(IN privilege_role_uuid VARCHAR(32), IN ro
         SELECT count(*) INTO role_count FROM zstack.RoleVO WHERE uuid = privilege_role_uuid;
 
         IF (role_count = 0) THEN
+            SELECT CURTIME();
             LEAVE procedure_label;
         END IF;
 
@@ -202,7 +204,7 @@ CREATE PROCEDURE upgradePrivilegeAdmin(IN privilege_role_uuid VARCHAR(32), IN ro
 
             CALL getMaxAccountResourceRefVO(refId);
             INSERT INTO AccountResourceRefVO (`id`, `accountUuid`, `ownerAccountUuid`, `resourceUuid`, `resourceType`, `permission`, `isShared`, `lastOpDate`, `createDate`)
-            VALUES (refId + 1, targetAccountUuid, targetAccountUuid, new_role_uuid, 'RoleVO', 2, 0, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+            VALUES (refId + 1, '36c27e8ff05c4780bf6d2fa65700f22e', '36c27e8ff05c4780bf6d2fa65700f22e', generated_role_uuid, 'RoleVO', 2, 0, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
 
             SET new_statement_uuid = REPLACE(UUID(), '-', '');
             INSERT INTO zstack.RolePolicyStatementVO (`uuid`, `statement`, `roleUuid`, `lastOpDate`, `createDate`)
