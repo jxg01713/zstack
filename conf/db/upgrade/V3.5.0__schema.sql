@@ -80,22 +80,26 @@ CREATE PROCEDURE upgradeProjectAdmin()
     BEGIN
         DECLARE done INT DEFAULT FALSE;
         DECLARE vid varchar(32);
-        DECLARE projectUuid varchar(32);
-        DECLARE attributeUuid VARCHAR(32);
+        DECLARE count_new_attribute INT DEFAULT 0;
+        DECLARE project_uuid varchar(32);
+        DECLARE attribute_uuid VARCHAR(32);
         DECLARE cur CURSOR FOR SELECT virtualIDUuid,value FROM zstack.IAM2VirtualIDAttributeVO where name = '__ProjectAdmin__';
         DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
 
         OPEN cur;
         read_loop: LOOP
-            FETCH cur INTO vid, projectUuid;
+            FETCH cur INTO vid, project_uuid;
             IF done THEN
                 LEAVE read_loop;
             END IF;
 
-            SET attributeUuid = REPLACE(UUID(), '-', '');
+            SELECT count(*) into count_new_attribute from IAM2VirtualIDAttributeVO where name = '__IAM2ProjectAdmin__' and virtualIDUuid = vid;
+            IF (count_new_attribute = 0) THEN
+                SET attribute_uuid = REPLACE(UUID(), '-', '');
 
-            INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
-            values (attributeUuid, '__IAM2ProjectAdmin__', projectUuid, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+                INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
+                VALUES (attribute_uuid, '__IAM2ProjectAdmin__', project_uuid, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+            END IF;
         END LOOP;
         CLOSE cur;
         SELECT CURTIME();
@@ -108,22 +112,27 @@ CREATE PROCEDURE upgradeProjectOperator()
     BEGIN
         DECLARE done INT DEFAULT FALSE;
         DECLARE vid varchar(32);
-        DECLARE projectUuid varchar(32);
-        DECLARE attributeUuid VARCHAR(32);
+        DECLARE count_new_attribute INT DEFAULT 0;
+        DECLARE project_uuid varchar(32);
+        DECLARE attribute_uuid VARCHAR(32);
         DECLARE cur CURSOR FOR SELECT virtualIDUuid,value FROM zstack.IAM2VirtualIDAttributeVO where name = '__ProjectOperator__';
         DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
 
         OPEN cur;
         read_loop: LOOP
-            FETCH cur INTO vid, projectUuid;
+            FETCH cur INTO vid, project_uuid;
             IF done THEN
                 LEAVE read_loop;
             END IF;
 
-            SET attributeUuid = REPLACE(UUID(), '-', '');
+            SELECT count(*) into count_new_attribute from IAM2VirtualIDAttributeVO where name = '__IAM2ProjectOperator__' and virtualIDUuid = vid;
 
-            INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
-            values (attributeUuid, '__IAM2ProjectOperator__', projectUuid, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+            IF (count_new_attribute = 0) THEN
+                SET attribute_uuid = REPLACE(UUID(), '-', '');
+
+                INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
+                VALUES (attribute_uuid, '__IAM2ProjectOperator__', project_uuid, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+            END IF;
         END LOOP;
         CLOSE cur;
         SELECT CURTIME();
@@ -135,9 +144,10 @@ DELIMITER $$
 CREATE PROCEDURE upgradePlatformAdmin()
     BEGIN
         DECLARE done INT DEFAULT FALSE;
+        DECLARE count_new_attribute INT DEFAULT 0;
         DECLARE vid varchar(32);
-        DECLARE attributeUuid VARCHAR(32);
-        DECLARE cur CURSOR FOR SELECT virtualIDUuid FROM zstack.IAM2VirtualIDAttributeVO where name = '__PlatformAdmin__';
+        DECLARE attribute_uuid VARCHAR(32);
+        DECLARE cur CURSOR FOR SELECT virtualIDUuid FROM zstack.IAM2VirtualIDAttributeVO where name = '__PlatformAdmin__' and virtualIDUuid = vid;
         DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
 
         OPEN cur;
@@ -147,10 +157,15 @@ CREATE PROCEDURE upgradePlatformAdmin()
                 LEAVE read_loop;
             END IF;
 
-            SET attributeUuid = REPLACE(UUID(), '-', '');
 
-            INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
-            VALUES (attributeUuid, '__IAM2PlatformAdmin__', NULL, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+            SELECT count(*) into count_new_attribute from IAM2VirtualIDAttributeVO where name = '__IAM2PlatformAdmin__';
+
+            IF (count_new_attribute = 0) THEN
+                SET attribute_uuid = REPLACE(UUID(), '-', '');
+
+                INSERT INTO zstack.IAM2VirtualIDAttributeVO (`uuid`, `name`, `value`, `type`, `virtualIDUuid`, `lastOpDate`, `createDate`)
+                VALUES (attribute_uuid, '__IAM2PlatformAdmin__', NULL, 'Customized', vid, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
+            END IF;
         END LOOP;
         CLOSE cur;
         SELECT CURTIME();
