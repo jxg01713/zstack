@@ -147,7 +147,7 @@ CREATE PROCEDURE upgradePlatformAdmin()
         DECLARE count_new_attribute INT DEFAULT 0;
         DECLARE vid varchar(32);
         DECLARE attribute_uuid VARCHAR(32);
-        DECLARE cur CURSOR FOR SELECT virtualIDUuid FROM zstack.IAM2VirtualIDAttributeVO where name = '__PlatformAdmin__' and virtualIDUuid = vid;
+        DECLARE cur CURSOR FOR SELECT virtualIDUuid FROM zstack.IAM2VirtualIDAttributeVO where name = '__PlatformAdmin__';
         DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
 
         OPEN cur;
@@ -157,9 +157,7 @@ CREATE PROCEDURE upgradePlatformAdmin()
                 LEAVE read_loop;
             END IF;
 
-
-            SELECT count(*) into count_new_attribute from IAM2VirtualIDAttributeVO where name = '__IAM2PlatformAdmin__';
-
+            SELECT count(*) into count_new_attribute from IAM2VirtualIDAttributeVO where name = '__IAM2PlatformAdmin__' and virtualIDUuid = vid;
             IF (count_new_attribute = 0) THEN
                 SET attribute_uuid = REPLACE(UUID(), '-', '');
 
